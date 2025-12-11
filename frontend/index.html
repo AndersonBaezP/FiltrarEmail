@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+    <title>Api</title>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📧 Email Filter API</h1>
+            <p>Sistema de búsqueda y filtrado de correos electrónicos</p>
+        </div>
+
+        <!-- Search Form -->
+        <div class="search-section">
+            <form id="searchForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Contenido <span class="required">*</span></label>
+                        <input type="text" id="content" placeholder="Buscar en contenido..." required>
+                    </div>
+                    <div class="form-group">
+                        <label>Destinatario</label>
+                        <input type="text" id="recipient" placeholder="email@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Emisor</label>
+                        <input type="text" id="sender" placeholder="sender@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Empresa</label>
+                        <input type="text" id="company" placeholder="Nombre de empresa">
+                    </div>
+                    <div class="form-group">
+                        <label>Fecha Desde</label>
+                        <input type="datetime-local" id="dateFrom">
+                    </div>
+                    <div class="form-group">
+                        <label>Fecha Hasta</label>
+                        <input type="datetime-local" id="dateTo">
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button type="submit" class="btn btn-primary">🔍 Buscar</button>
+                    <button type="button" class="btn btn-secondary" onclick="clearForm()">🗑️ Limpiar</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section">
+            <div id="resultsContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        // URL de tu API (cambiar si es necesario)
+        const API_URL = 'http://localhost:8000';
+        
+        let currentPage = 1;
+        let currentFilters = {};
+
+        // Manejar envío del formulario
+        document.getElementById('searchForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            currentPage = 1;
+            searchEmails();
+        });
+
+        // Función principal de búsqueda
+        async function searchEmails() {
+            const content = document.getElementById('content').value.trim();
+            const recipient = document.getElementById('recipient').value.trim();
+            const sender = document.getElementById('sender').value.trim();
+            const company = document.getElementById('company').value.trim();
+            const dateFrom = document.getElementById('dateFrom').value;
+            const dateTo = document.getElementById('dateTo').value;
+
+            // Validar que content no esté vacío
+            if (!content) {
+                alert('El campo "Contenido" es obligatorio');
+                return;
+            }
+
+            // Construir parámetros de búsqueda
+            const params = new URLSearchParams({
+                content: content,
+                page: currentPage,
+                page_size: 10
+            });
+
+            if (recipient) params.append('recipient', recipient);
+            if (sender) params.append('sender', sender);
+            if (company) params.append('company_name', company);
+            if (dateFrom) params.append('date_from', dateFrom);
+            if (dateTo) params.append('date_to', dateTo);
+
+            // Guardar filtros actuales
+            currentFilters = { content, recipient, sender, company, dateFrom, dateTo };
+
+            // Mostrar loading
+            const resultsContainer = document.getElementById('resultsContainer');
+            resultsContainer.innerHTML = '<div class="loading">⏳ Buscando correos...</div>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/emails/search?${params}`);
+                
+                if (!response.ok) {
+                    throw new Error('Error en la búsqueda');
+                }
+
+                const data = await response.json();
+                displayResults(data);
+
+            } catch (error) {
+                resultsContainer.innerHTML = `
+                    <div class="error">
+                        ❌ Error al buscar correos: ${error.message}<br>
+                        Verifica que la API esté corriendo en ${API_URL}
+                    </div>
+                `;
+            }
+        }
+
+        // Mostrar resultados
+        function displayResults(data) {
+            const resultsContainer = document.getElementById('resultsContainer');
+
+            if (data.total === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="no-results">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        <h2>No se encontraron resultados</h2>
+                        <p>Intenta con otros términos de búsqueda</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="results-info">
+                    <strong>📊 ${data.total} correos encontrados</strong>
+                    <span>Página ${data.page} de ${data.total_pages}</span>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Destinatario</th>
+                                <th>Emisor</th>
+                                <th>Empresa</th>
+                                <th>Fecha</th>
+                                <th>Contenido</th>
+                                <th>Código SMTP</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            data.emails.forEach(email => {
+                const date = new Date(email.date).toLocaleString('es-ES');
+                html += `
+                    <tr>
+                        <td>${email.id}</td>
+                        <td>${email.recipient}</td>
+                        <td>${email.sender}</td>
+                        <td>${email.company_name}</td>
+                        <td>${date}</td>
+                        <td class="content-cell" title="${email.content}">${email.content}</td>
+                        <td>${email.smtp_code}</td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination">
+                    <button onclick="goToPage(1)" ${currentPage === 1 ? 'disabled' : ''}>⏮️ Primera</button>
+                    <button onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>⬅️ Anterior</button>
+                    <span>Página ${data.page} de ${data.total_pages}</span>
+                    <button onclick="goToPage(${currentPage + 1})" ${currentPage === data.total_pages ? 'disabled' : ''}>Siguiente ➡️</button>
+                    <button onclick="goToPage(${data.total_pages})" ${currentPage === data.total_pages ? 'disabled' : ''}>Última ⏭️</button>
+                </div>
+            `;
+
+            resultsContainer.innerHTML = html;
+        }
+
+        // Navegar entre páginas
+        function goToPage(page) {
+            currentPage = page;
+            searchEmails();
+        }
+
+        // Limpiar formulario
+        function clearForm() {
+            document.getElementById('searchForm').reset();
+            document.getElementById('resultsContainer').innerHTML = '';
+            currentPage = 1;
+            currentFilters = {};
+        }
+    </script>
+</body>
+</html>
